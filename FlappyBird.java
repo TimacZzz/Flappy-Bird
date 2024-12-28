@@ -1,11 +1,15 @@
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
 import javax.swing.*;
 import java.awt.*;
+import java.io.File;
 import java.util.Objects;
 
 public class FlappyBird {
     // Final fields, won't change!
     private final int initialX = 80;
-    private final int initialY = 100;
+    private final int initialY = 171;
     private final int width = 34;
     private final int height = 24;
     private final int gravity = 1;
@@ -13,6 +17,7 @@ public class FlappyBird {
     private final Image bird1 = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/birdUp.png"))).getImage();
     private final Image bird2 = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/birdMid.png"))).getImage();
     private final Image bird3 = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/birdDown.png"))).getImage();
+    private final File hopSoundEffect = new File("./src/Sound Effects/hop.wav");
 
     private Image currentImg;
     private int counter;
@@ -20,9 +25,9 @@ public class FlappyBird {
     private int velocityY;
 
     FlappyBird(){
-        currentY = 100;
+        currentY = initialY;
         velocityY = 0;
-        currentImg = bird2;
+        currentImg = bird3;
         counter = 2;
     }
 
@@ -77,6 +82,14 @@ public class FlappyBird {
 
     public void hop(){
         velocityY = hopVelocity;
+        try {
+            AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(hopSoundEffect);
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioInputStream);
+            clip.start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     // Maybe Later Change how the gravity works

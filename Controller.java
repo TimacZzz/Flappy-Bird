@@ -1,17 +1,22 @@
 import java.awt.*;
 import java.awt.event.*;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Objects;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
 import javax.swing.*;
 
-public class Controller extends JPanel implements ActionListener, KeyListener{
+public class Controller extends JPanel implements ActionListener, MouseListener{
     private final int boardWidth;
     private final int boardHeight;
     private int counter;
-    private double score;
+    private int score;
     private boolean gameOver;
     private boolean isInMenu;
     private boolean startedGame;
+    private boolean registeredListener;
 
     // BK Image
     private final Image backgroundImg;
@@ -22,10 +27,17 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
     // Bird Image
     private Image bird;
 
+    // Top Pipe Image
+    private Image topPipe;
+
     // Medal Images
     private Image bronzeMedal;
     private Image silverMedal;
     private Image goldMedal;
+
+    // Ready Image
+    private Image getReady;
+    private Image instruction;
 
     // Score Number Image
     private Image zero;
@@ -42,6 +54,13 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
     // GamwOver
     private Image gameOverImage;
     private Image medalPanel;
+
+    // Files for sound effects
+    private File scoreSoundEffect;
+    private File hitGroundSoundEffect;
+
+    // File for storing best score
+    private File scoreFile;
 
     // Moving Ground
     private MovingGround ground;
@@ -72,6 +91,7 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
         gameOver = false;
         isInMenu = true;
         startedGame = false;
+        registeredListener = false;
 
         // load images
         backgroundImg = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/bk.png"))).getImage();
@@ -79,11 +99,16 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
         bird = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/birdMid.png"))).getImage();
         gameOverImage = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/gameOver.png"))).getImage();
         medalPanel = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/medalPanel.png"))).getImage();
+        topPipe = new ImageIcon(Objects.requireNonNull(Pipe.class.getResource("./Sprites/upPipe.png"))).getImage();
 
         // Medals
         bronzeMedal = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/bronze.png"))).getImage();
         silverMedal = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/silver.png"))).getImage();
         goldMedal = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/gold.png"))).getImage();
+
+        // Get Ready Phase
+        getReady = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/getReady.png"))).getImage();
+        instruction = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/instruction.png"))).getImage();
 
         zero = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/0.png"))).getImage();
         one = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/1.png"))).getImage();
@@ -95,6 +120,26 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
         seven = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/7.png"))).getImage();
         eight = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/8.png"))).getImage();
         nine = new ImageIcon(Objects.requireNonNull(getClass().getResource("./Sprites/9.png"))).getImage();
+
+        // Sound Effects
+        scoreSoundEffect = new File("./src/Sound Effects/score.wav");
+        hitGroundSoundEffect = new File("./src/Sound Effects/hitGround.wav");
+
+        // Score File
+        scoreFile = new File("./src/score.txt");
+        if (!scoreFile.exists()) {
+            try {
+                scoreFile.createNewFile();
+                FileWriter writer = new FileWriter(scoreFile);
+                BufferedWriter bufferedWriter = new BufferedWriter(writer);
+                bufferedWriter.write("0");
+                bufferedWriter.flush();
+                bufferedWriter.close();
+                writer.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
 
         ground = new MovingGround();
         flappyBird = new FlappyBird();
@@ -201,8 +246,8 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
 
     public void startGame(){
         gameLoop.start();
-        setFocusable(true);
-        addKeyListener(this);
+//        setFocusable(true);
+//        addMouseListener(this);
         placePipeTimer.start();
         groundTimer.start();
     }
@@ -219,12 +264,34 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
         else{
             startButton.setVisible(false);
             scoreButton.setVisible(false);
-            drawGame(g);
-            if(!startedGame){
-                startGame();
-                startedGame = true;
+
+            //setFocusable(true);
+            if (!registeredListener){
+                addMouseListener(this);
+                registeredListener = true;
             }
+
+            if(!startedGame){
+                drawGame(g);
+                drawReady(g);
+                repaint();
+            }
+            else{
+                drawGame(g);
+                repaint();
+            }
+
         }
+    }
+
+    public void drawReady(Graphics g){
+        // Draw the bird
+        g.drawImage(flappyBird.getCurrentImg(), flappyBird.getInitialX(), flappyBird.getCurrentY(),
+                flappyBird.getWidth(), flappyBird.getHeight(), null);
+
+        g.drawImage(getReady, 57, 100, 174, 44, null);
+
+        g.drawImage(instruction, 125, 170, 78, 98, null);
     }
 
     public void drawGame(Graphics g){
@@ -252,6 +319,7 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
             g.drawImage(gameOverImage, 50, 100, 188, 38, null);
             g.drawImage(medalPanel, 31, 150, 226, 116, null);
             drawContentOfMedalPanel(g);
+            drawBestScore(g);
             Dimension buttonSize = menuButton.getPreferredSize();
             menuButton.setBounds(104, 280, buttonSize.width, buttonSize.height);
             menuButton.setVisible(true);
@@ -263,7 +331,7 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
 
     // Draw Score & Medals on medal board
     public void drawContentOfMedalPanel(Graphics g){
-        int value = (int) score;
+        int value = score;
         Image imageOnes;
         Image imageTens;
         Image imageHundreds;
@@ -303,6 +371,55 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
             imageOnes = findNumber(value);
             g.drawImage(imageOnes, 225, 185, 11, 15, null);
             g.drawImage(bronzeMedal, 58, 190, 48, 48, null);
+        }
+    }
+
+    // Draw Score & Medals on medal board
+    public void drawBestScore(Graphics g){
+        try{
+            FileReader reader = new FileReader(scoreFile);
+            BufferedReader bufferedReader = new BufferedReader(reader);
+            int value = Integer.parseInt(bufferedReader.readLine());
+
+            Image imageOnes;
+            Image imageTens;
+            Image imageHundreds;
+
+            // Check how many digits score has:\
+            if (value > 999){
+                imageOnes = findNumber(9);
+                imageTens = findNumber(9);
+                imageHundreds = findNumber(9);
+                g.drawImage(imageHundreds, 201, 225, 11, 15, null);
+                g.drawImage(imageTens, 213, 225, 11, 15, null);
+                g.drawImage(imageOnes, 225, 225, 11, 15, null);
+            }
+            else if (value >= 100){
+                int hundreds = value / 100;
+                int tens = (value - hundreds * 100) / 10;
+                int ones = (value - hundreds * 100 - tens * 10);
+                imageOnes = findNumber(ones);
+                imageTens = findNumber(tens);
+                imageHundreds = findNumber(hundreds);
+                g.drawImage(imageHundreds, 201, 225, 11, 15, null);
+                g.drawImage(imageTens, 213, 225, 11, 15, null);
+                g.drawImage(imageOnes, 225, 225, 11, 15, null);
+            }
+            else if (value >= 10){
+                int tens = value / 10;
+                int ones = (value - tens * 10);
+                imageOnes = findNumber(ones);
+                imageTens = findNumber(tens);
+                g.drawImage(imageTens, 213, 225, 11, 15, null);
+                g.drawImage(imageOnes, 225, 225, 11, 15, null);
+            }
+            else{
+                imageOnes = findNumber(value);
+                g.drawImage(imageOnes, 225, 225, 11, 15, null);
+            }
+        }
+        catch(Exception e){
+            e.printStackTrace();
         }
     }
 
@@ -381,14 +498,32 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
             p.changeX(p.getVelocityX());
 
             //If a pipe been passed, add score
-            if (!p.isPassed() && flappyBird.getInitialX() > p.getX() + p.getWidth()){
-                p.setPassed(true);
-                score += 0.5;
+            if (p.getImg() == topPipe){
+                if (!p.isPassed() && flappyBird.getInitialX() > p.getX() + p.getWidth()){
+                    p.setPassed(true);
+                    score += 1;
+                    try {
+                        AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(scoreSoundEffect);
+                        Clip clip = AudioSystem.getClip();
+                        clip.open(audioInputStream);
+                        clip.start();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
             }
 
             //If collision happens, game is over
             if (collision(flappyBird, p)){
                 gameOver = true;
+                try {
+                    AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(hitGroundSoundEffect);
+                    Clip clip = AudioSystem.getClip();
+                    clip.open(audioInputStream);
+                    clip.start();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         }
 
@@ -402,6 +537,14 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
         //Fall below the map
         if (flappyBird.getCurrentY() > ground.getInitialY() - flappyBird.getHeight()) {
             gameOver = true;
+            try {
+                AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(hitGroundSoundEffect);
+                Clip clip = AudioSystem.getClip();
+                clip.open(audioInputStream);
+                clip.start();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -420,8 +563,26 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
         if (gameOver){
             gameLoop.stop();
             placePipeTimer.stop();
+            removeMouseListener(this);
+            try{
+                FileReader reader = new FileReader(scoreFile);
+                BufferedReader bufferedReader = new BufferedReader(reader);
+                int previousBestScore = Integer.parseInt(bufferedReader.readLine());
+                if (score > previousBestScore){
+                    FileWriter writer = new FileWriter(scoreFile);
+                    BufferedWriter bufferedWriter = new BufferedWriter(writer);
+                    bufferedWriter.write(Integer.toString(score));
+                    bufferedWriter.flush();
+                    bufferedWriter.close();
+                    writer.close();
+                }
+            }
+            catch(Exception exception){
+                exception.printStackTrace();
+            }
         }
     }
+
 
     // Restore the setting before starting the game
     public void restoreSetting(){
@@ -433,23 +594,36 @@ public class Controller extends JPanel implements ActionListener, KeyListener{
         score = 0;
         gameOver = false;
         startedGame = false;
+        registeredListener = false;
     }
 
     @Override
-    public void keyPressed(KeyEvent e) {
-        //Space is pressed
-        if (e.getKeyCode() == KeyEvent.VK_SPACE){
-            flappyBird.hop();
+    public void mouseClicked(MouseEvent e) {
+        if (!startedGame){
+            startGame();
+            startedGame = true;
         }
+
+        flappyBird.hop();
     }
 
     @Override
-    public void keyTyped(KeyEvent e) {
-        return;
+    public void mousePressed(MouseEvent e) {
+
     }
 
     @Override
-    public void keyReleased(KeyEvent e) {
-        return;
+    public void mouseReleased(MouseEvent e) {
+
+    }
+
+    @Override
+    public void mouseEntered(MouseEvent e) {
+
+    }
+
+    @Override
+    public void mouseExited(MouseEvent e) {
+
     }
 }
